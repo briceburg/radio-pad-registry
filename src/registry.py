@@ -1,32 +1,17 @@
 import connexion
-from api import create_app, response
+from api import create_app
+from connexion.resolver import RestyResolver
+from connexion.options import SwaggerUIOptions
+from api.players import set_app_instance
 
 app = create_app()
 
+# Set the app instance for the players module to access
+set_app_instance(app)
 
-async def get_player(player_id):
-    player = app.PLAYERS.get(player_id)
-    if player is None:
-        return response({"error": "Player not found"}, status=404)
-
-    # Make a shallow copy for fallback fields
-    player = dict(player)
-
-    if not player.get("stationsUrl"):
-        player["stationsUrl"] = (
-            f"https://registry.radiopad.dev/players/{player_id}/stations.json"
-        )
-
-    if not player.get("switchboardUrl"):
-        player["switchboardUrl"] = f"wss://{player_id}.player-switchboard.radiopad.dev"
-
-    return response(player, root="player")
-
-
-async def list_players():
-    # TODO: Implement pagination
-    return response(app.PLAYERS_SUMMARY, root="players")
-
+# Add RestyResolver to automatically map endpoints to functions
+options = SwaggerUIOptions(swagger_ui_path="/api-docs")
+app.add_api("openapi.yaml", resolver=RestyResolver("api"), swagger_ui_options=options)
 
 if __name__ == "__main__":
     from pathlib import Path

@@ -62,7 +62,8 @@ def create_app():
     app = connexion.AsyncApp(
         __name__, specification_dir="spec", swagger_ui_options=options
     )
-    app.add_api("openapi.yaml", swagger_ui_options=options)
+    # RestyResolver will be added by registry.py, not here
+    # app.add_api("openapi.yaml", swagger_ui_options=options)
     try:
         app.PLAYERS = load_players(
             Path(__file__).parent / "players",
