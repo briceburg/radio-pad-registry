@@ -1,27 +1,39 @@
 import json
 from datetime import datetime
 from types import MappingProxyType
+from fastapi import APIRouter, HTTPException, Path, Query
 
 from lib.constants import BASE_DIR
-from lib.helpers import build_paginated_response, build_response, logger
+from lib.helpers import build_paginated_response, logger
 from lib.schema import validate_schema
+from models.station import StationList
+from models.station_preset import StationPresetList
+from models.pagination import PaginatedResponse
+
+router = APIRouter()
 
 
-async def get(id: str):
+@router.get("/station-presets/{id}", response_model=StationList)
+async def get(id: str = Path(..., description="Station Preset ID", example="briceburg")):
     """Get a Station Preset by ID - maps to GET /station-presets/{id}"""
-
+    
     preset = STATION_PRESETS.get(id)
     if preset is None:
-        return {"error": "Preset not found"}, 404
+        raise HTTPException(status_code=404, detail="Preset not found")
 
-    return build_response(preset, "StationList")
+    # Return the preset data as StationList
+    return StationList(root=preset)
 
 
-async def search(page: int = 1, per_page: int = 10):
+@router.get("/station-presets", response_model=PaginatedResponse[StationPresetList])
+async def search(
+    page: int = Query(default=1, ge=1, description="Page number"),
+    per_page: int = Query(default=10, ge=1, le=100, description="Items per page", alias="perPage")
+):
     """List all station presets - maps to GET /station-presets with pagination"""
-
+    
     return build_paginated_response(
-        list(STATION_PRESETS_LIST), "StationPresetList", page, per_page
+        list(STATION_PRESETS_LIST), StationPresetList, page, per_page
     )
 
 

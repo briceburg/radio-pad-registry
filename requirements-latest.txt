@@ -1,2 +1,3 @@
-connexion
-connexion[asyncio, swagger-ui, uvicorn]
+fastapi
+uvicorn[standard]
+python-multipart

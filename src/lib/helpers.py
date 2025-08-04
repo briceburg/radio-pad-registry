@@ -1,6 +1,11 @@
 import logging
+from typing import List, TypeVar, Type
 
-from lib.schema import SchemaConstructionError, construct_from_schema
+from fastapi import HTTPException
+from pydantic import ValidationError
+from models.pagination import PaginatedResponse
+
+T = TypeVar('T')
 
 
 def get_logger(name=None):
@@ -13,17 +18,14 @@ def get_logger(name=None):
 logger = get_logger()
 
 
-def _handle_schema_error(e):
-    """Log a schema construction error and return a standardized error response."""
-    error_message = f"Schema construction error: {e}"
-    logger.error(error_message)
-    return {"error": error_message}, 500
-
-
 def build_paginated_response(
-    raw_items, schema_name, page=1, per_page=10, max_per_page=100
-):
-    """Build a paginated and schema-conformant response, handling errors gracefully."""
+    raw_items: List[dict], 
+    model_class: Type[T], 
+    page: int = 1, 
+    per_page: int = 10, 
+    max_per_page: int = 100
+) -> PaginatedResponse[T]:
+    """Build a paginated response using pydantic models."""
     try:
         page = int(page)
         per_page = int(per_page)
@@ -43,23 +45,18 @@ def build_paginated_response(
     end = start + per_page
     paginated_raw_items = raw_items[start:end]
 
+    # Convert raw items to pydantic models
     try:
-        constructed_items = construct_from_schema(schema_name, paginated_raw_items)
-    except SchemaConstructionError as e:
-        return _handle_schema_error(e)
+        items = [model_class(**item) for item in paginated_raw_items]
+    except ValidationError as e:
+        error_message = f"Schema validation error: {e}"
+        logger.error(error_message)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-    return {
-        "items": constructed_items,
-        "page": page,
-        "per_page": per_page,
-        "total": total,
-        "total_pages": (total + per_page - 1) // per_page,
-    }
-
-
-def build_response(raw_item, schema_name):
-    """Build a schema-conformant response, handling errors gracefully."""
-    try:
-        return construct_from_schema(schema_name, raw_item)
-    except SchemaConstructionError as e:
-        return _handle_schema_error(e)
+    return PaginatedResponse[model_class](
+        items=items,
+        page=page,
+        per_page=per_page,
+        total=total,
+        total_pages=(total + per_page - 1) // per_page,
+    )
