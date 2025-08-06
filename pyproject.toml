@@ -2,6 +2,7 @@
 profile = "black"
 
 [tool.pytest.ini_options]
+pythonpath = ["src", "tests"]
 markers = [
     "functional: marks tests as functional (requires a running server)",
 ]

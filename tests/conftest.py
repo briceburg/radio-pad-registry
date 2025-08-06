@@ -1,12 +1,5 @@
-import sys
-from pathlib import Path
-
 import pytest
 from starlette.testclient import TestClient
-
-# Add the src and tests directories to the Python path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from data.store import DataStore
 from models.station_preset import Station, StationPreset

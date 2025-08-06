@@ -8,7 +8,7 @@ import uvicorn
 
 def run_server():
     """A simple function to run the Uvicorn server."""
-    uvicorn.run("src.registry:app", host="127.0.0.1", port=8000, log_level="warning")
+    uvicorn.run("registry:app", host="127.0.0.1", port=8000, log_level="warning")
 
 
 @pytest.mark.functional
