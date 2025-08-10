@@ -1,3 +1,6 @@
+from models.account import Account
+
+
 def test_list_accounts(client):
     response = client.get("/v1/accounts")
     assert response.status_code == 200

@@ -1,58 +1,64 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from data.store import store
 from models.pagination import PaginatedList
 from models.station_preset import (
-    StationPreset,
-    StationPresetCreate,
-    StationPresetSummary,
+    AccountStationPreset,
+    AccountStationPresetCreate,
+    GlobalStationPreset,
+    GlobalStationPresetCreate,
 )
+from datastore import DataStore
+from .deps import get_store, pagination
 
 router = APIRouter()
 
 
-# Define a shared dependency for pagination parameters
-def get_pagination_params(page: int = 1, per_page: int = 10):
-    return {"page": page, "per_page": per_page}
-
-
 @router.put(
     "/accounts/{account_id}/presets/{preset_id}",
-    response_model=StationPreset,
+    response_model=AccountStationPreset,
     response_model_exclude_none=True,
     tags=["station presets"],
 )
 async def register_account_preset(
-    account_id: str, preset_id: str, preset_data: StationPresetCreate
+    account_id: str,
+    preset_id: str,
+    preset_data: AccountStationPresetCreate,
+    ds: DataStore = Depends(get_store),
 ):
     """Create or update an account station preset."""
-    preset_dict = preset_data.model_dump(exclude_unset=True)
-    preset = store.presets.register(preset_id, preset_dict, account_id)
-    return preset
+    preset = AccountStationPreset(id=preset_id, account_id=account_id, **preset_data.model_dump())
+    return ds.account_presets.save(preset)
 
 
 @router.put(
     "/presets/{preset_id}",
-    response_model=StationPreset,
+    response_model=GlobalStationPreset,
     response_model_exclude_none=True,
     tags=["station presets"],
 )
-async def register_global_preset(preset_id: str, preset_data: StationPresetCreate):
+async def register_global_preset(
+    preset_id: str,
+    preset_data: GlobalStationPresetCreate,
+    ds: DataStore = Depends(get_store),
+):
     """Create or update a global station preset."""
-    preset_dict = preset_data.model_dump(exclude_unset=True)
-    preset = store.presets.register(preset_id, preset_dict)
-    return preset
+    preset = GlobalStationPreset(id=preset_id, **preset_data.model_dump())
+    return ds.global_presets.save(preset)
 
 
 @router.get(
     "/accounts/{account_id}/presets/{preset_id}",
-    response_model=StationPreset,
+    response_model=AccountStationPreset,
     response_model_exclude_none=True,
     tags=["station presets"],
 )
-async def get_account_preset(account_id: str, preset_id: str):
+async def get_account_preset(
+    account_id: str,
+    preset_id: str,
+    ds: DataStore = Depends(get_store),
+):
     """Get a single account station preset by its ID."""
-    preset = store.presets.get(preset_id, account_id)
+    preset = ds.account_presets.get(account_id, preset_id)
     if preset is None:
         raise HTTPException(status_code=404, detail="Station preset not found")
     return preset
@@ -60,13 +66,16 @@ async def get_account_preset(account_id: str, preset_id: str):
 
 @router.get(
     "/presets/{preset_id}",
-    response_model=StationPreset,
+    response_model=GlobalStationPreset,
     response_model_exclude_none=True,
     tags=["station presets"],
 )
-async def get_global_preset(preset_id: str):
+async def get_global_preset(
+    preset_id: str,
+    ds: DataStore = Depends(get_store),
+):
     """Get a single global station preset by its ID."""
-    preset = store.presets.get(preset_id)
+    preset = ds.global_presets.get(preset_id)
     if preset is None:
         raise HTTPException(status_code=404, detail="Station preset not found")
     return preset
@@ -74,33 +83,30 @@ async def get_global_preset(preset_id: str):
 
 @router.get(
     "/accounts/{account_id}/presets",
-    response_model=PaginatedList[StationPresetSummary],
+    response_model=PaginatedList[AccountStationPreset],
     response_model_exclude_none=True,
     tags=["station presets"],
 )
 async def list_account_presets(
     account_id: str,
-    pagination: dict = Depends(get_pagination_params),
-    include_globals: bool = False,
+    params: dict = Depends(pagination),
+    ds: DataStore = Depends(get_store),
 ):
     """
     List account station presets.
-    By default, only presets owned by the account are returned.
-    Set `include_globals=true` to include global presets.
     """
-    paginated_presets = store.presets.list(
-        **pagination, account_id=account_id, include_globals=include_globals
-    )
-    return paginated_presets
+    return ds.account_presets.list(account_id=account_id, **params)
 
 
 @router.get(
     "/presets",
-    response_model=PaginatedList[StationPresetSummary],
+    response_model=PaginatedList[GlobalStationPreset],
     response_model_exclude_none=True,
     tags=["station presets"],
 )
-async def list_global_presets(pagination: dict = Depends(get_pagination_params)):
+async def list_global_presets(
+    params: dict = Depends(pagination),
+    ds: DataStore = Depends(get_store),
+):
     """List all available global station presets."""
-    paginated_presets = store.presets.list(**pagination)
-    return paginated_presets
+    return ds.global_presets.list(**params)

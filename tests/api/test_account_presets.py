@@ -1,6 +1,29 @@
 import pytest
 
+def test_get_account_preset(client):
+    """Test getting a single station preset for an account."""
+    account_id = "testuser"
+    preset_id = "my-preset"
+    client.put(
+        f"/v1/accounts/{account_id}/presets/{preset_id}",
+        json={
+            "name": "My Preset",
+            "stations": [{"name": "A", "url": "https://a.com"}],
+        },
+    )
 
+    response = client.get(f"/v1/accounts/{account_id}/presets/{preset_id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == preset_id
+    assert data["account_id"] == account_id
+
+
+def test_get_account_preset_not_found(client):
+    """Test getting a non-existent account station preset."""
+    response = client.get("/v1/accounts/testuser/presets/does-not-exist")
+    assert response.status_code == 404
+    
 def test_register_account_preset(client):
     """Test creating a new station preset for an account with all fields."""
     account_id = "testuser"
@@ -10,7 +33,7 @@ def test_register_account_preset(client):
         "category": "Personal",
         "description": "My personal list of stations.",
         "stations": [
-            {"title": "A Cool Station", "url": "https://cool.station/stream"},
+            {"name": "A Cool Station", "url": "https://cool.station/stream"},
         ],
     }
     response = client.put(
@@ -23,6 +46,8 @@ def test_register_account_preset(client):
     assert data["category"] == "Personal"
     assert data["description"] == "My personal list of stations."
     assert data["account_id"] == account_id
+
+    
 
 
 def test_register_account_preset_missing_optional_fields(client):
@@ -62,30 +87,6 @@ def test_register_account_preset_missing_required_field(client, missing_field):
     assert response.status_code == 422
 
 
-def test_get_account_preset(client):
-    """Test getting a single station preset for an account."""
-    account_id = "testuser"
-    preset_id = "my-preset"
-    client.put(
-        f"/v1/accounts/{account_id}/presets/{preset_id}",
-        json={
-            "name": "My Preset",
-            "stations": [{"title": "A", "url": "https://a.com"}],
-        },
-    )
-
-    response = client.get(f"/v1/accounts/{account_id}/presets/{preset_id}")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["id"] == preset_id
-    assert data["account_id"] == account_id
-
-
-def test_get_account_preset_not_found(client):
-    """Test getting a non-existent account station preset."""
-    response = client.get("/v1/accounts/testuser/presets/does-not-exist")
-    assert response.status_code == 404
-
 
 def test_list_account_presets(client):
     """Test listing station presets for an account."""
@@ -94,23 +95,13 @@ def test_list_account_presets(client):
         f"/v1/accounts/{account_id}/presets/my-preset",
         json={
             "name": "My Preset",
-            "stations": [{"title": "A", "url": "https://a.com"}],
+            "stations": [{"name": "A", "url": "https://a.com"}],
         },
     )
 
-    # Test without including globals
     response = client.get(f"/v1/accounts/{account_id}/presets")
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 1
     assert data["items"][0]["id"] == "my-preset"
     assert data["items"][0]["account_id"] == account_id
-    assert "stations" not in data["items"][0]  # Summary view
-
-    # Test including globals
-    response = client.get(f"/v1/accounts/{account_id}/presets?include_globals=true")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["total"] == 2  # my-preset + briceburg (global)
-    assert any(item["id"] == "my-preset" for item in data["items"])
-    assert any(item["id"] == "briceburg" for item in data["items"])

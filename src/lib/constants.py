@@ -1,3 +1,4 @@
 from pathlib import Path
 
-BASE_DIR = Path(__file__).parent.parent
+# The absolute path to the project root directory
+BASE_DIR = Path(__file__).parent.parent.parent

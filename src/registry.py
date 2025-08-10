@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -5,15 +6,22 @@ from fastapi import FastAPI
 from starlette.responses import RedirectResponse
 
 from api.router import router as api_router
-from data.store import DataStore, store
+from datastore import DataStore
+from lib.constants import BASE_DIR
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handles application startup and shutdown events."""
-    if store._store is None:
-        store.initialize(DataStore())
+    if not hasattr(app.state, "store"):
+        ds = DataStore(
+            data_path=os.environ.get("DATA_PATH", str(BASE_DIR / "tmp" / "data")),
+            seed_path=os.environ.get("SEED_PATH", str(BASE_DIR / "data")),
+        )
+        ds.seed()
+        app.state.store = ds  # expose for dependencies
     yield
+    # add cleanup logic here
 
 
 def create_app():

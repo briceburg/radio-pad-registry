@@ -1,22 +1,21 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from data.store import store
 from models.account import Account, AccountCreate
 from models.pagination import PaginatedList
+from datastore import DataStore
+from .deps import get_store
 
 router = APIRouter()
 
 
 @router.put("/accounts/{id}", response_model=Account)
-async def register_account(id: str, account_data: AccountCreate):
+async def register_account(id: str, account_data: AccountCreate, ds: DataStore = Depends(get_store)):
     """Register an account"""
-    account_dict = account_data.model_dump(exclude_unset=True)
-    account = store.accounts.register(id, account_dict)
-
-    return Account(id=id, name=account.get("name", id.replace("_", " ").title()))
+    account = Account(id=id, **account_data.model_dump())
+    return ds.accounts.save(account)
 
 
 @router.get("/accounts", response_model=PaginatedList[Account])
-async def list_accounts(page: int = 1, per_page: int = 10):
+async def list_accounts(page: int = 1, per_page: int = 10, ds: DataStore = Depends(get_store)):
     """List all accounts"""
-    return store.accounts.list(page, per_page)
+    return ds.accounts.list(page=page, per_page=per_page)

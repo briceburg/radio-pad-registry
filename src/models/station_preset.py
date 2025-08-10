@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, HttpUrl
 class Station(BaseModel):
     """A single station within a preset."""
 
-    title: str = Field(..., json_schema_extra={"example": "WWOZ"})
+    name: str = Field(..., json_schema_extra={"example": "WWOZ"})
     url: HttpUrl = Field(
         ..., json_schema_extra={"example": "https://www.wwoz.org/listen/hi"}
     )
@@ -26,23 +26,29 @@ class StationPresetBase(BaseModel):
         None,
         json_schema_extra={"example": "A collection of my favorite news stations."},
     )
-
-
-class StationPresetCreate(StationPresetBase):
-    """Request body model for creating/updating a station preset."""
-
     stations: List[Station]
-    account_id: Optional[str] = Field(None, json_schema_extra={"example": "briceburg"})
 
 
-class StationPresetSummary(StationPresetBase):
-    """A summary of a station preset, excluding the list of stations."""
+class GlobalStationPresetCreate(StationPresetBase):
+    """Request body model for creating a global station preset."""
+
+    pass
+
+
+class AccountStationPresetCreate(StationPresetBase):
+    """Request body model for creating an account station preset."""
+
+    pass
+
+
+class GlobalStationPreset(StationPresetBase):
+    """A global station preset."""
 
     id: str = Field(..., json_schema_extra={"example": "briceburg"})
-    account_id: Optional[str] = Field(None, json_schema_extra={"example": "briceburg"})
 
 
-class StationPreset(StationPresetSummary):
-    """The full station preset model as stored and returned by the API."""
+class AccountStationPreset(StationPresetBase):
+    """An account-specific station preset."""
 
-    stations: List[Station]
+    id: str = Field(..., json_schema_extra={"example": "briceburg-my-favorites"})
+    account_id: str = Field(..., json_schema_extra={"example": "briceburg"})
