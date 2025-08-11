@@ -1,6 +1,8 @@
 __pycache__/
 *.py[codz]
 *$py.class
+/.hypothesis/
+/.pytest_cache/
 
 /.venv/
 /venv/

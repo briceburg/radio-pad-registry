@@ -1,16 +1,18 @@
 from pathlib import Path
-from .backends.json_file_store import JSONFileStore
-from .accounts import Accounts
-from .players import Players
-from .presets import GlobalPresets, AccountPresets
-from lib.logging import logger
+
 from lib.constants import BASE_DIR
+from lib.logging import logger
+
+from .accounts import Accounts
+from .backends.json_file_store import JSONFileStore
+from .players import Players
+from .presets import AccountPresets, GlobalPresets
 
 
 class DataStore:
     """A container for the application's data stores."""
 
-    def __init__(self, data_path: str | None = None, seed_path: str | None = None):
+    def __init__(self, data_path: str | None = None, seed_path: str | None = None) -> None:
         # Provide sensible defaults so tests can construct without args
         self.data_path = Path(data_path) if data_path else BASE_DIR / "tmp" / "data"
         self.seed_path = Path(seed_path) if seed_path else BASE_DIR / "data"
@@ -20,13 +22,13 @@ class DataStore:
         self.global_presets = GlobalPresets(self.file_store)
         self.account_presets = AccountPresets(self.file_store)
 
-    def seed(self):
+    def seed(self) -> None:
         """
         Seeds the datastore with initial data from the data-seed directory.
         Only seeds data if it doesn't already exist in the target datastore.
         """
-        import shutil
         import os
+        import shutil
 
         if not self.seed_path.is_dir():
             logger.error(f"Seed path does not exist: {self.seed_path}")

@@ -1,5 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 
+from api.dependencies import get_store, pagination
+from datastore import DataStore
+from lib.constants import SLUG_PATTERN
 from models.pagination import PaginatedList
 from models.station_preset import (
     AccountStationPreset,
@@ -7,8 +10,6 @@ from models.station_preset import (
     GlobalStationPreset,
     GlobalStationPresetCreate,
 )
-from datastore import DataStore
-from .deps import get_store, pagination
 
 router = APIRouter()
 
@@ -20,14 +21,15 @@ router = APIRouter()
     tags=["station presets"],
 )
 async def register_account_preset(
-    account_id: str,
-    preset_id: str,
-    preset_data: AccountStationPresetCreate,
+    account_id: str = Path(..., pattern=SLUG_PATTERN, description="Account ID (slug)"),
+    preset_id: str = Path(..., pattern=SLUG_PATTERN, description="Preset ID (slug)"),
+    preset_data: AccountStationPresetCreate | None = None,
     ds: DataStore = Depends(get_store),
-):
-    """Create or update an account station preset."""
-    preset = AccountStationPreset(id=preset_id, account_id=account_id, **preset_data.model_dump())
-    return ds.account_presets.save(preset)
+) -> AccountStationPreset:
+    """Create or update an account station preset (partial PUT semantics)."""
+    partial = preset_data.model_dump(exclude_unset=True) if preset_data else {}
+    preset = ds.account_presets.merge_upsert(account_id, preset_id, partial)
+    return preset
 
 
 @router.put(
@@ -37,13 +39,14 @@ async def register_account_preset(
     tags=["station presets"],
 )
 async def register_global_preset(
-    preset_id: str,
-    preset_data: GlobalStationPresetCreate,
+    preset_id: str = Path(..., pattern=SLUG_PATTERN, description="Preset ID (slug)"),
+    preset_data: GlobalStationPresetCreate | None = None,
     ds: DataStore = Depends(get_store),
-):
-    """Create or update a global station preset."""
-    preset = GlobalStationPreset(id=preset_id, **preset_data.model_dump())
-    return ds.global_presets.save(preset)
+) -> GlobalStationPreset:
+    """Create or update a global station preset (partial PUT semantics)."""
+    partial = preset_data.model_dump(exclude_unset=True) if preset_data else {}
+    preset = ds.global_presets.merge_upsert(preset_id, partial)
+    return preset
 
 
 @router.get(
@@ -53,10 +56,10 @@ async def register_global_preset(
     tags=["station presets"],
 )
 async def get_account_preset(
-    account_id: str,
-    preset_id: str,
+    account_id: str = Path(..., pattern=SLUG_PATTERN, description="Account ID (slug)"),
+    preset_id: str = Path(..., pattern=SLUG_PATTERN, description="Preset ID (slug)"),
     ds: DataStore = Depends(get_store),
-):
+) -> AccountStationPreset:
     """Get a single account station preset by its ID."""
     preset = ds.account_presets.get(account_id, preset_id)
     if preset is None:
@@ -71,9 +74,9 @@ async def get_account_preset(
     tags=["station presets"],
 )
 async def get_global_preset(
-    preset_id: str,
+    preset_id: str = Path(..., pattern=SLUG_PATTERN, description="Preset ID (slug)"),
     ds: DataStore = Depends(get_store),
-):
+) -> GlobalStationPreset:
     """Get a single global station preset by its ID."""
     preset = ds.global_presets.get(preset_id)
     if preset is None:
@@ -88,13 +91,11 @@ async def get_global_preset(
     tags=["station presets"],
 )
 async def list_account_presets(
-    account_id: str,
-    params: dict = Depends(pagination),
+    account_id: str = Path(..., pattern=SLUG_PATTERN, description="Account ID (slug)"),
+    params: dict[str, int] = Depends(pagination),
     ds: DataStore = Depends(get_store),
-):
-    """
-    List account station presets.
-    """
+) -> PaginatedList[AccountStationPreset]:
+    """List account station presets."""
     return ds.account_presets.list(account_id=account_id, **params)
 
 
@@ -105,8 +106,8 @@ async def list_account_presets(
     tags=["station presets"],
 )
 async def list_global_presets(
-    params: dict = Depends(pagination),
+    params: dict[str, int] = Depends(pagination),
     ds: DataStore = Depends(get_store),
-):
+) -> PaginatedList[GlobalStationPreset]:
     """List all available global station presets."""
     return ds.global_presets.list(**params)

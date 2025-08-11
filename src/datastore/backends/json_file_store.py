@@ -2,14 +2,15 @@ import json
 import os
 from glob import glob
 from pathlib import Path
-from typing import Any, Dict, Optional
-from datastore.types import PagedResult
+from typing import Any, cast
+
+from lib.types import PagedResult
 
 
 class JSONFileStore:
     """A file-based store for JSON data."""
 
-    def __init__(self, base_path: str):
+    def __init__(self, base_path: str) -> None:
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
 
@@ -17,17 +18,18 @@ class JSONFileStore:
         """Constructs a path relative to the base path."""
         return self.base_path.joinpath(*parts)
 
-    def get(self, object_id: str, *path_parts: str) -> Optional[Dict[str, Any]]:
+    def get(self, object_id: str, *path_parts: str) -> dict[str, Any] | None:
         """
         Retrieves a JSON object by its ID from a specified path.
         """
         file_path = self._get_path(*path_parts, f"{object_id}.json")
         if not file_path.exists():
             return None
-        with open(file_path, "r") as f:
-            return json.load(f)
+        with open(file_path) as f:
+            data = cast(dict[str, Any], json.load(f))
+        return data
 
-    def list(self, *path_parts: str, page: int = 1, per_page: int = 10) -> PagedResult[Dict[str, Any]]:
+    def list(self, *path_parts: str, page: int = 1, per_page: int = 10) -> PagedResult[dict[str, Any]]:
         """
         Lists JSON objects from a specified path with pagination.
         The 'id' of each object is derived from its filename if not present in the file.
@@ -43,17 +45,17 @@ class JSONFileStore:
         end = start + per_page
         paginated_paths = file_paths[start:end]
 
-        items: list[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         for file_path in paginated_paths:
-            with open(file_path, "r") as f:
-                item = json.load(f)
+            with open(file_path) as f:
+                item = cast(dict[str, Any], json.load(f))
                 # Always derive id from filename; exclude any stored id field
                 item["id"] = Path(file_path).stem
                 items.append(item)
 
         return items, total
 
-    def save(self, object_id: str, data: Dict[str, Any], *path_parts: str) -> None:
+    def save(self, object_id: str, data: dict[str, Any], *path_parts: str) -> None:
         """
         Saves a JSON object by its ID to a specified path.
         Keeps any explicit 'id' field provided by caller.
@@ -78,14 +80,14 @@ class JSONFileStore:
         os.remove(file_path)
         return True
 
-    def patch(self, object_id: str, patch_data: Dict[str, Any], *path_parts: str) -> None:
+    def patch(self, object_id: str, patch_data: dict[str, Any], *path_parts: str) -> None:
         """
         Applies a partial update to a JSON object.
         """
         file_path = self._get_path(*path_parts, f"{object_id}.json")
         if file_path.exists():
             with open(file_path, "r+") as f:
-                data = json.load(f)
+                data = cast(dict[str, Any], json.load(f))
                 data.update({k: v for k, v in patch_data.items() if k != "id"})
                 f.seek(0)
                 json.dump(data, f, indent=2)

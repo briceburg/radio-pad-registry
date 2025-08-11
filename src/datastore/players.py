@@ -1,7 +1,7 @@
 from datastore.backends.json_file_store import JSONFileStore
 from models.player import Player
+
 from .base import BaseAccountScopedRepo
-from models.pagination import PaginatedList  # retained for export compatibility
 
 
 class Players(BaseAccountScopedRepo[Player]):

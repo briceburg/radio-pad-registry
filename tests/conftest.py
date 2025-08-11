@@ -1,7 +1,12 @@
-import pytest
-from starlette.testclient import TestClient
+import multiprocessing
+import os
 import shutil
-from pathlib import Path
+import time
+
+import httpx
+import pytest
+import uvicorn
+from starlette.testclient import TestClient
 
 from datastore import DataStore
 from lib.constants import BASE_DIR
@@ -9,14 +14,6 @@ from models.account import Account
 from models.player import Player
 from models.station_preset import GlobalStationPreset, Station
 from registry import create_app
-
-import os
-import multiprocessing
-import time
-from pathlib import Path
-
-import httpx
-import uvicorn
 
 # Use a consistent, git-ignored directory for test data
 TEST_DATA_PATH = BASE_DIR / "data-tests"
@@ -62,7 +59,8 @@ def client(mock_store):
     app = create_app()
 
     # Override shared dependency
-    from api.deps import get_store
+    from api.dependencies import get_store
+
     app.dependency_overrides[get_store] = lambda: mock_store
 
     # Using a `with` statement for the TestClient ensures that the app's
@@ -85,7 +83,7 @@ def functional_client(tmp_path_factory):
     full startup and seeding process.
     """
     data_path = str(tmp_path_factory.mktemp("data"))
-    
+
     server_process = multiprocessing.Process(target=run_server, args=(data_path,))
     try:
         server_process.start()

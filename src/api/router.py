@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import accounts, players, presets
+from api import accounts, players, presets
 
 router = APIRouter()
 

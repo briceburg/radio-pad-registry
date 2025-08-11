@@ -1,4 +1,5 @@
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -11,7 +12,7 @@ from lib.constants import BASE_DIR
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Handles application startup and shutdown events."""
     if not hasattr(app.state, "store"):
         ds = DataStore(
@@ -24,7 +25,7 @@ async def lifespan(app: FastAPI):
     # add cleanup logic here
 
 
-def create_app():
+def create_app() -> FastAPI:
     app = FastAPI(
         lifespan=lifespan,
         swagger_ui_parameters={"defaultModelsExpandDepth": 0},
@@ -33,11 +34,11 @@ def create_app():
     app.include_router(api_router, prefix="/v1")
 
     @app.get("/", include_in_schema=False)
-    async def root():
+    async def root() -> RedirectResponse:
         return RedirectResponse("/docs")
 
     @app.get("/healthz", include_in_schema=False)
-    async def healthz():
+    async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
     return app
