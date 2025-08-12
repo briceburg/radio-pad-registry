@@ -29,6 +29,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         lifespan=lifespan,
         swagger_ui_parameters={"defaultModelsExpandDepth": 0},
+        redirect_slashes=False,
     )
 
     app.include_router(api_router, prefix="/v1")

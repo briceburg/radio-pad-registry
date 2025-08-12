@@ -6,6 +6,11 @@ from pydantic import BaseModel, model_validator
 T = TypeVar("T")
 
 
+class PaginationParams(BaseModel):
+    page: int = 1
+    per_page: int = 10
+
+
 class PaginatedList[T](BaseModel):
     items: list[T]
     total: int

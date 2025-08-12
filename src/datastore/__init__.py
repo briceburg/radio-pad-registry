@@ -5,6 +5,7 @@ from lib.logging import logger
 
 from .accounts import Accounts
 from .backends.json_file_store import JSONFileStore
+from .model_store import ModelStore
 from .players import Players
 from .presets import AccountPresets, GlobalPresets
 
@@ -44,3 +45,14 @@ class DataStore:
                     target_file.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy(seed_file, target_file)
                     logger.info(f"Seeded {target_file}")
+
+
+__all__ = [
+    "AccountPresets",
+    "Accounts",
+    "DataStore",
+    "GlobalPresets",
+    "JSONFileStore",
+    "ModelStore",
+    "Players",
+]
