@@ -1,3 +1,6 @@
+from typing import Any
+
+
 def put_json(client, path: str, body: dict, expected: int = 200) -> dict:
     resp = client.put(path, json=body)
     assert resp.status_code == expected, f"expected {expected} got {resp.status_code}: {resp.text}"
@@ -12,6 +15,12 @@ def get_json(client, path: str, expected: int = 200) -> dict:
     if expected == 200:
         return resp.json()
     return {}
+
+
+def get_response(client, path: str, expected: int = 200):
+    resp = client.get(path)
+    assert resp.status_code == expected, f"GET {path} expected {expected} got {resp.status_code}: {resp.text}"
+    return resp
 
 
 def assert_paginated(payload: dict, total: int | None = None):

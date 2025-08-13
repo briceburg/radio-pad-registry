@@ -13,11 +13,11 @@ def test_datastore_initialization():
 
 
 def test_datastore_isolation():
-    """Separate DataStore instances have independent file_store roots."""
+    """Separate DataStore instances have independent backends and roots."""
     store1 = DataStore()
     store2 = DataStore()
     assert store1 is not store2
-    assert store1.file_store is not store2.file_store
+    assert store1.backend is not store2.backend
 
 
 def test_seed_no_error(tmp_path):

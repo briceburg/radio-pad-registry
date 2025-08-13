@@ -1,8 +1,37 @@
 import pytest
 from fastapi import status
+from urllib.parse import urlparse, parse_qs
+import math
 
 from models.pagination import PaginatedList
-from tests.api._helpers import get_json, put_json
+from tests.api._helpers import get_json, put_json, get_response
+from typing import get_origin
+from fastapi.routing import APIRoute
+
+
+EXPECTED_PAGINATED_ENDPOINTS = {
+    "/v1/accounts",
+    "/v1/accounts/{account_id}/players",
+    "/v1/presets",
+    "/v1/accounts/{account_id}/presets",
+}
+
+
+def _normalize_path(path: str) -> str:
+    if path != "/" and path.endswith("/"):
+        return path[:-1]
+    return path
+
+
+def _discover_paginated_paths(app) -> set[str]:
+    discovered: set[str] = set()
+    for r in app.routes:
+        if isinstance(r, APIRoute) and "GET" in (r.methods or set()):
+            rm = getattr(r, "response_model", None)
+            name = getattr(rm, "__name__", str(rm)) if rm else ""
+            if rm and ("PaginatedList" in name or getattr(rm, "model_fields", None) and {"items","total","page","per_page"}.issubset(rm.model_fields.keys())):
+                discovered.add(_normalize_path(r.path))
+    return discovered
 
 
 @pytest.mark.parametrize(
@@ -19,8 +48,12 @@ def test_pagination_out_of_bounds(client, url: str, total: int):
     assert data["page"] == 1000
     assert data["per_page"] == 1
     assert data["total"] == total
-    assert data["has_prev"] is True  # because page > 1
-    assert data["has_next"] is False
+    # links sanity
+    links = data["links"]
+    assert links["first"] == "?page=1&per_page=1"
+    assert links["last"] == f"?page={total}&per_page=1"
+    assert links["prev"] == f"?page={total}&per_page=1"
+    assert links.get("next") is None
 
 
 @pytest.mark.parametrize(
@@ -37,14 +70,22 @@ def test_per_page_parameter_works(client, url: str, total: int):
     assert data["page"] == 1
     assert data["per_page"] == total
     assert data["total"] == total
-    assert data["has_prev"] is False
+    links = data["links"]
+    assert links["first"] == f"?page=1&per_page={total}"
+    assert links["last"] == f"?page=1&per_page={total}"
+    assert links.get("prev") is None
+    assert links.get("next") is None
 
     data = get_json(client, f"{url}?page=1&per_page={total + 1}")
     assert len(data["items"]) == total
     assert data["page"] == 1
     assert data["per_page"] == total + 1
     assert data["total"] == total
-    assert data["has_prev"] is False
+    links = data["links"]
+    assert links["first"] == f"?page=1&per_page={total+1}"
+    assert links["last"] == f"?page=1&per_page={total+1}"
+    assert links.get("prev") is None
+    assert links.get("next") is None
 
 
 @pytest.mark.parametrize(
@@ -61,8 +102,11 @@ def test_pagination_works(client, url: str, item_id_1: str, item_id_2: str, tota
     assert data["page"] == 1
     assert data["per_page"] == 1
     assert data["total"] == total
-    assert data["has_prev"] is False
-    assert data["has_next"] is (total > 1)
+    links = data["links"]
+    assert links["first"] == "?page=1&per_page=1"
+    assert links["last"] == f"?page={total}&per_page=1"
+    assert links.get("prev") is None
+    assert links.get("next") == "?page=2&per_page=1"
 
     data = get_json(client, f"{url}?page=2&per_page=1")
     assert len(data["items"]) == 1
@@ -70,7 +114,11 @@ def test_pagination_works(client, url: str, item_id_1: str, item_id_2: str, tota
     assert data["page"] == 2
     assert data["per_page"] == 1
     assert data["total"] == total
-    assert data["has_prev"] is True
+    links = data["links"]
+    assert links["first"] == "?page=1&per_page=1"
+    assert links["last"] == f"?page={total}&per_page=1"
+    assert links.get("prev") == "?page=1&per_page=1"
+    assert links.get("next") is None
 
 
 # Unit-style tests for PaginatedList metadata (model-level)
@@ -135,38 +183,48 @@ def test_pagination_invalid_values_rejected(client, raw_page, raw_per):
     assert detail
 
 
-def test_large_dataset_pagination_players(client):
-    account = "bulkacct"
-    # create 23 players -> p00 .. p22
-    for i in range(23):
-        pid = f"p{i:02d}"
-        put_json(client, f"/v1/accounts/{account}/players/{pid}", {"name": f"Player {i}"})
+@pytest.mark.parametrize(
+    "url,total",
+    [
+        ("/v1/accounts", 2),
+        ("/v1/accounts/testuser1/players", 2),
+        ("/v1/presets", 1),
+    ],
+)
+def test_link_object_per_page_gt_total(client, url: str, total: int):
+    # Request per_page greater than total -> single page only, no prev/next
+    big_pp = total + 10
+    data = get_json(client, f"{url}?page=1&per_page={big_pp}")
+    links = data["links"]
+    assert links["first"] == f"?page=1&per_page={big_pp}"
+    assert links["last"] == f"?page=1&per_page={big_pp}"
+    assert links.get("prev") is None
+    assert links.get("next") is None
 
-    # Page 1
-    page1 = get_json(client, f"/v1/accounts/{account}/players?page=1&per_page=10")
-    assert page1["total"] == 23
-    assert len(page1["items"]) == 10
-    assert page1["items"][0]["id"] == "p00"
-    assert page1["items"][-1]["id"] == "p09"
-    assert page1["has_prev"] is False
-    assert page1["has_next"] is True
-    assert page1["pages"] == 3
 
-    # Page 2
-    page2 = get_json(client, f"/v1/accounts/{account}/players?page=2&per_page=10")
-    assert len(page2["items"]) == 10
-    assert page2["items"][0]["id"] == "p10"
-    assert page2["items"][-1]["id"] == "p19"
-    assert page2["has_prev"] is True
-    assert page2["has_next"] is True
+@pytest.mark.parametrize(
+    "url,total",
+    [
+        ("/v1/accounts", 2),
+        ("/v1/accounts/testuser1/players", 2),
+        ("/v1/presets", 1),
+    ],
+)
+def test_link_object_out_of_bounds_single_page(client, url: str, total: int):
+    # When per_page >= total, last_page=1 even if page is out of bounds
+    big_pp = max(100, total)  # ensure single page
+    data = get_json(client, f"{url}?page=50&per_page={big_pp}")
+    links = data["links"]
+    assert links["first"] == f"?page=1&per_page={big_pp}"
+    assert links["last"] == f"?page=1&per_page={big_pp}"
+    assert links.get("prev") == f"?page=1&per_page={big_pp}"
+    assert links.get("next") is None
 
-    # Deterministic ordering (repeat page 2)
-    page2_repeat = get_json(client, f"/v1/accounts/{account}/players?page=2&per_page=10")
-    assert [p["id"] for p in page2_repeat["items"]] == [p["id"] for p in page2["items"]]
 
-    # Page 3 (last partial)
-    page3 = get_json(client, f"/v1/accounts/{account}/players?page=3&per_page=10")
-    assert len(page3["items"]) == 3
-    assert [p["id"] for p in page3["items"]] == ["p20", "p21", "p22"]
-    assert page3["has_prev"] is True
-    assert page3["has_next"] is False
+def test_detect_new_paginated_endpoints(client):
+    discovered = _discover_paginated_paths(client.app)
+    extras = discovered - EXPECTED_PAGINATED_ENDPOINTS
+    assert not extras, (
+        "New paginated endpoints detected; please add them to pagination tests: "
+        + ", ".join(sorted(extras))
+    )

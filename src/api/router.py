@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from api import accounts, players
-from api.presets import account_presets, global_presets
+from api.routes import accounts, players
+from api.routes.presets import account_presets, global_presets
 
 router = APIRouter()
 

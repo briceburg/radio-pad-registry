@@ -4,11 +4,9 @@ from collections.abc import Mapping
 from string import Formatter
 from typing import Any, Protocol, Self
 
-from datastore.backends.json_file_store import JSONFileStore
+from datastore.core.protocols import ObjectStore
+from datastore.types import PathParams
 from models.pagination import PaginatedList
-
-# Alias for path template parameters (directory placeholders)
-PathParams = Mapping[str, str]
 
 
 class ModelWithId(Protocol):
@@ -17,12 +15,16 @@ class ModelWithId(Protocol):
     def model_dump(self, *, mode: str = "json") -> dict[str, Any]: ...
 
     @classmethod
-    def model_validate(cls, __data: Any) -> Self: ...
+    def model_validate(cls, data: dict[str, Any]) -> Self: ...
+
+
+class ConcurrencyError(Exception):
+    """Raised when conditional write preconditions fail (e.g., ETag mismatch)."""
 
 
 class ModelStore[T: ModelWithId]:
     """
-    Minimal, hierarchical repository backed by JSONFileStore.
+    Minimal, hierarchical repository backed by an ObjectStore (e.g., local fs, s3fs).
 
     path_template must end with the `{id}` placeholder.
     - Example: "accounts/{account_id}/presets/{id}"
@@ -32,10 +34,10 @@ class ModelStore[T: ModelWithId]:
 
     Examples:
     - Flat collection:
-      ModelStore(file_store, model=Station, path_template="stations/{id}")
+      ModelStore(backend, model=Station, path_template="stations/{id}")
 
     - Account-scoped:
-      ModelStore(file_store, model=Preset, path_template="accounts/{account_id}/presets/{id}")
+      ModelStore(backend, model=Preset, path_template="accounts/{account_id}/presets/{id}")
       store.get("preset-1", path_params={"account_id": "acct-123"})
 
     Notes:
@@ -44,12 +46,12 @@ class ModelStore[T: ModelWithId]:
 
     def __init__(
         self,
-        file_store: JSONFileStore,
+        backend: ObjectStore,
         *,
         model: type[T],
         path_template: str,
     ):
-        self._file_store = file_store
+        self._backend = backend
         self._model = model
         # normalize and validate template
         normalized = path_template.strip().strip("/")
@@ -74,6 +76,10 @@ class ModelStore[T: ModelWithId]:
                 req_keys.append(field_name)
         self._required_keys: tuple[str, ...] = tuple(req_keys)
 
+    @property
+    def _reserved_keys(self) -> set[str]:
+        return {"id", *self._required_keys}
+
     def _dir_components(self, *, path_params: PathParams | None = None) -> tuple[str, ...]:
         if not self._dir_template:
             return ()
@@ -96,10 +102,10 @@ class ModelStore[T: ModelWithId]:
 
     def get(self, object_id: str, *, path_params: PathParams | None = None) -> T | None:
         comps = self._dir_components(path_params=path_params)
-        data = self._file_store.get(object_id, *comps)
+        data, _ = self._backend.get(object_id, *comps)
         if data is None:
             return None
-        reserved = {"id", *self._required_keys}
+        reserved = self._reserved_keys
         payload = {k: v for k, v in data.items() if k not in reserved}
         base: dict[str, Any] = {"id": object_id}
         if path_params:
@@ -108,9 +114,9 @@ class ModelStore[T: ModelWithId]:
 
     def list(self, *, path_params: PathParams | None = None, page: int = 1, per_page: int = 10) -> PaginatedList[T]:
         comps = self._dir_components(path_params=path_params)
-        items, total = self._file_store.list(*comps, page=page, per_page=per_page)
+        items, total = self._backend.list(*comps, page=page, per_page=per_page)
         param_vals = {k: path_params[k] for k in self._required_keys} if path_params else {}
-        reserved = {"id", *self._required_keys}
+        reserved = self._reserved_keys
         models: list[T] = []
         for item in items:
             file_id = item.get("id")
@@ -123,21 +129,35 @@ class ModelStore[T: ModelWithId]:
         if self._required_keys and path_params is None:
             path_params = self._path_params_from_model(model_obj)
         comps = self._dir_components(path_params=path_params)
-        reserved = {"id", *self._required_keys}
+        reserved = self._reserved_keys
         data = {k: v for k, v in model_obj.model_dump(mode="json").items() if k not in reserved}
-        self._file_store.save(model_obj.id, data, *comps)
+        self._backend.save(model_obj.id, data, *comps)
         return model_obj
 
     def merge_upsert(self, object_id: str, partial: dict[str, object], *, path_params: PathParams | None = None) -> T:
-        existing = self.get(object_id, path_params=path_params)
-        reserved = {"id", *self._required_keys}
-        if existing is not None:
-            base_dump = {k: v for k, v in existing.model_dump(mode="json").items() if k not in reserved}
-            merged = {**base_dump, **partial}
-        else:
-            merged = partial
-        base_fields: dict[str, Any] = {"id": object_id}
+        comps = self._dir_components(path_params=path_params)
+        current, version = self._backend.get(object_id, *comps)
+        base: dict[str, Any] = {"id": object_id}
         if path_params:
-            base_fields.update({k: path_params[k] for k in self._required_keys})
-        model_obj = self._model.model_validate({**base_fields, **merged})
-        return self.save(model_obj, path_params=path_params)
+            base.update({k: path_params[k] for k in self._required_keys})
+        merged = {
+            **({} if current is None else current),
+            **partial,
+        }
+        reserved = self._reserved_keys
+        payload = {k: v for k, v in merged.items() if k not in reserved}
+        model = self._model.model_validate({**base, **payload})
+        data = {k: v for k, v in model.model_dump(mode="json").items() if k not in reserved}
+        try:
+            self._backend.save(object_id, data, *comps, if_match=version if current is not None else None)
+        except ValueError as e:  # backend conflict (e.g., ETag mismatch)
+            raise ConcurrencyError("Conditional save failed") from e
+        return model
+
+    # --- Additional convenience operations ---
+    def exists(self, object_id: str, *, path_params: PathParams | None = None) -> bool:
+        return self.get(object_id, path_params=path_params) is not None
+
+    def delete(self, object_id: str, *, path_params: PathParams | None = None) -> bool:
+        comps = self._dir_components(path_params=path_params)
+        return self._backend.delete(object_id, *comps)

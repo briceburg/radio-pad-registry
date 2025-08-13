@@ -3,7 +3,7 @@ from typing import cast, Annotated
 from fastapi import HTTPException, Query, Request, Depends, Path
 
 from datastore import DataStore
-from lib.constants import SLUG_PATTERN
+from lib import SLUG_PATTERN
 from models.pagination import PaginationParams
 
 MAX_PER_PAGE = 100
@@ -29,6 +29,7 @@ def pagination(
 
 # Annotated alias for pagination dependency
 PageParams = Annotated[PaginationParams, Depends(pagination)]
+
 
 # Common path param aliases
 AccountId = Annotated[str, Path(..., pattern=SLUG_PATTERN, description="Account ID (slug)")]

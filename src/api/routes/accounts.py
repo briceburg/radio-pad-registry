@@ -1,32 +1,31 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from api.dependencies import DS, AccountId, PageParams
-from models import Account, AccountCreate, PaginatedList
+from api.errors import NotFoundError
+from models import Account, AccountCreate, PaginatedList, ErrorDetail
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
-@router.put("/{account_id}", response_model=Account)
+@router.put("/{account_id}", response_model=Account, responses={404: {"model": ErrorDetail}})
 async def register_account(
     account_id: AccountId,
     ds: DS,
     account_data: AccountCreate | None = None,
 ) -> Account:
-    """Register or update an account."""
     partial = account_data.model_dump(exclude_unset=True) if account_data else {}
     account = ds.accounts.merge_upsert(account_id, partial)
     return account
 
 
-@router.get("/{account_id}", response_model=Account)
+@router.get("/{account_id}", response_model=Account, responses={404: {"model": ErrorDetail}})
 async def get_account(
     account_id: AccountId,
     ds: DS,
 ) -> Account:
-    """Get an account by its ID."""
     account = ds.accounts.get(account_id)
     if account is None:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise NotFoundError("Account not found", details={"account_id": account_id})
     return account
 
 
@@ -36,5 +35,5 @@ async def list_accounts(
     ds: DS,
     paging: PageParams,
 ) -> PaginatedList[Account]:
-    """List all accounts."""
-    return ds.accounts.list(page=paging.page, per_page=paging.per_page)
+    pl = ds.accounts.list(page=paging.page, per_page=paging.per_page)
+    return pl

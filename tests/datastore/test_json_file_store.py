@@ -18,13 +18,15 @@ def test_save_and_get(file_store: JSONFileStore):
     data = {"key": "value"}
     path_parts = ("test", "path")
     file_store.save(object_id, data, *path_parts)
-    retrieved_data = file_store.get(object_id, *path_parts)
+    retrieved_data, version = file_store.get(object_id, *path_parts)
     assert retrieved_data == data
+    assert isinstance(version, str) and version
 
 
 def test_get_non_existent(file_store: JSONFileStore):
-    retrieved_data = file_store.get("non-existent", "test", "path")
+    retrieved_data, version = file_store.get("non-existent", "test", "path")
     assert retrieved_data is None
+    assert version is None
 
 
 def test_list(file_store: JSONFileStore):
@@ -47,10 +49,12 @@ def test_delete(file_store: JSONFileStore):
     object_id = "test-object"
     path_parts = ("test", "delete")
     file_store.save(object_id, {"key": "value"}, *path_parts)
-    assert file_store.get(object_id, *path_parts) is not None
+    data, _ = file_store.get(object_id, *path_parts)
+    assert data is not None
     deleted = file_store.delete(object_id, *path_parts)
     assert deleted is True
-    assert file_store.get(object_id, *path_parts) is None
+    data2, _ = file_store.get(object_id, *path_parts)
+    assert data2 is None
 
 
 def test_delete_non_existent(file_store: JSONFileStore):
@@ -100,6 +104,7 @@ def test_round_trip(temp_data_path: Path, object_id, data, path_parts):
     """
     store = JSONFileStore(str(temp_data_path / "prop"))
     store.save(object_id, data, *path_parts)
-    retrieved_data = store.get(object_id, *path_parts)
+    retrieved_data, version = store.get(object_id, *path_parts)
     expected = {k: v for k, v in data.items() if k != "id"}
     assert retrieved_data == expected
+    assert isinstance(version, str) and version

@@ -5,16 +5,15 @@ from pathlib import Path
 import pytest
 
 from datastore import DataStore
-from lib.constants import BASE_DIR
 
 
 @pytest.fixture
-def temp_data_path() -> Path:
-    """Provide a stable project-level temporary data directory for datastore tests.
-    Uses <project>/tmp/tests/data (gitignored) so artifacts are inspectable after runs.
+def temp_data_path(unit_tests_root: Path) -> Path:
+    """Provide a project-level temporary data directory for datastore unit tests.
+    Uses <project>/tmp/tests/unit/datastore/data so artifacts are inspectable after runs.
     Cleaned before each use for isolation.
     """
-    base = BASE_DIR / "tmp" / "tests" / "data"
+    base = unit_tests_root / "datastore" / "data"
     if base.exists():
         shutil.rmtree(base)
     base.mkdir(parents=True, exist_ok=True)
@@ -22,9 +21,9 @@ def temp_data_path() -> Path:
 
 
 @pytest.fixture
-def datastore_factory():
-    """Factory to create isolated DataStore instances under <project>/tmp/tests/stores/<uuid>."""
-    root_base = BASE_DIR / "tmp" / "tests" / "stores"
+def datastore_factory(unit_tests_root: Path):
+    """Factory to create isolated DataStore instances under <project>/tmp/tests/unit/datastore/stores/<uuid>."""
+    root_base = unit_tests_root / "datastore" / "stores"
     root_base.mkdir(parents=True, exist_ok=True)
 
     def _make(**kwargs):

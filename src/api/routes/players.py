@@ -1,20 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from api.dependencies import DS, AccountId, PlayerId, PageParams
-from models import Account, PaginatedList, Player, PlayerCreate
+from api.errors import NotFoundError
+from models import Account, PaginatedList, Player, PlayerCreate, ErrorDetail
 
 router = APIRouter(prefix="/accounts/{account_id}/players", tags=["players"])
 
 
-@router.put("/{player_id}", response_model=Player)
+@router.put("/{player_id}", response_model=Player, responses={404: {"model": ErrorDetail}})
 async def register_player(
     account_id: AccountId,
     player_id: PlayerId,
     ds: DS,
     player_data: PlayerCreate | None = None,
 ) -> Player:
-    """Register or update a player. Creates the account if it doesn't exist."""
-    if ds.accounts.get(account_id) is None:
+    if not ds.accounts.exists(account_id):
         new_account = Account(id=account_id, name=account_id)
         ds.accounts.save(new_account)
     partial = player_data.model_dump(exclude_unset=True) if player_data else {}
@@ -22,16 +22,15 @@ async def register_player(
     return player
 
 
-@router.get("/{player_id}", response_model=Player)
+@router.get("/{player_id}", response_model=Player, responses={404: {"model": ErrorDetail}})
 async def get_player(
     account_id: AccountId,
     player_id: PlayerId,
     ds: DS,
 ) -> Player:
-    """Get a player by account and ID"""
     player = ds.players.get(player_id, path_params={"account_id": account_id})
     if player is None:
-        raise HTTPException(status_code=404, detail="Player not found")
+        raise NotFoundError("Player not found", details={"account_id": account_id, "player_id": player_id})
     return player
 
 
@@ -42,5 +41,5 @@ async def list_players(
     ds: DS,
     paging: PageParams,
 ) -> PaginatedList[Player]:
-    """List all players for an account"""
-    return ds.players.list(path_params={"account_id": account_id}, page=paging.page, per_page=paging.per_page)
+    pl = ds.players.list(path_params={"account_id": account_id}, page=paging.page, per_page=paging.per_page)
+    return pl

@@ -9,6 +9,7 @@ from .station_preset import (
     GlobalStationPreset,
     GlobalStationPresetCreate,
 )
+from .error import ErrorDetail
 
 __all__ = [
     "Account",
@@ -20,4 +21,5 @@ __all__ = [
     "PaginatedList",
     "Player",
     "PlayerCreate",
+    "ErrorDetail",
 ]

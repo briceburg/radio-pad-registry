@@ -1,10 +1,14 @@
+from __future__ import annotations
+
+import hashlib
 import json
 import os
-from glob import glob
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
-from lib.types import PagedResult
+
+def canonical_json(data: dict[str, Any]) -> str:
+    return json.dumps(data, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
 
 
 class JSONFileStore:
@@ -18,18 +22,23 @@ class JSONFileStore:
         """Constructs a path relative to the base path."""
         return self.base_path.joinpath(*parts)
 
-    def get(self, object_id: str, *path_parts: str) -> dict[str, Any] | None:
+    def _etag_for(self, data: dict[str, Any]) -> str:
+        payload = canonical_json(data).encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+
+    def get(self, object_id: str, *path_parts: str) -> tuple[dict[str, Any] | None, str | None]:
         """
-        Retrieves a JSON object by its ID from a specified path.
+        Retrieves a JSON object by its ID from a specified path and returns (data, version).
         """
         file_path = self._get_path(*path_parts, f"{object_id}.json")
         if not file_path.exists():
-            return None
-        with open(file_path) as f:
-            data = cast(dict[str, Any], json.load(f))
-        return data
+            return None, None
+        with file_path.open("r", encoding="utf-8") as f:
+            raw = json.load(f)
+        etag = self._etag_for(raw)
+        return raw, etag
 
-    def list(self, *path_parts: str, page: int = 1, per_page: int = 10) -> PagedResult[dict[str, Any]]:
+    def list(self, *path_parts: str, page: int = 1, per_page: int = 10) -> tuple[list[dict[str, Any]], int]:
         """
         Lists JSON objects from a specified path with pagination.
         The 'id' of each object is derived from its filename if not present in the file.
@@ -37,37 +46,39 @@ class JSONFileStore:
         directory = self._get_path(*path_parts)
         if not directory.exists():
             return [], 0
-
-        file_paths = sorted(glob(f"{directory}/*.json"))
-        total = len(file_paths)
-
-        start = (page - 1) * per_page
+        files = sorted([p for p in directory.iterdir() if p.suffix == ".json"], key=lambda p: p.stem)
+        total = len(files)
+        start = max(0, (page - 1) * per_page)
         end = start + per_page
-        paginated_paths = file_paths[start:end]
-
         items: list[dict[str, Any]] = []
-        for file_path in paginated_paths:
-            with open(file_path) as f:
-                item = cast(dict[str, Any], json.load(f))
-                # Always derive id from filename; exclude any stored id field
-                item["id"] = Path(file_path).stem
-                items.append(item)
-
+        for p in files[start:end]:
+            with p.open("r", encoding="utf-8") as f:
+                raw = json.load(f)
+            raw["id"] = p.stem
+            items.append(raw)
         return items, total
 
-    def save(self, object_id: str, data: dict[str, Any], *path_parts: str) -> None:
+    def save(self, object_id: str, data: dict[str, Any], *path_parts: str, if_match: str | None = None) -> None:
         """
         Saves a JSON object by its ID to a specified path.
         Keeps any explicit 'id' field provided by caller.
+        If if_match is provided and the file exists, enforce optimistic concurrency using ETag.
         """
-        directory = self._get_path(*path_parts)
-        directory.mkdir(parents=True, exist_ok=True)
-        file_path = directory.joinpath(f"{object_id}.json")
-
-        # Strip id field prior to persistence
-        data_to_save = {k: v for k, v in data.items() if k != "id"}
-        with open(file_path, "w") as f:
-            json.dump(data_to_save, f, indent=2)
+        file_path = self._get_path(*path_parts, f"{object_id}.json")
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        # Concurrency: if_match must match existing ETag when updating
+        if file_path.exists():
+            with file_path.open("r", encoding="utf-8") as f:
+                current = json.load(f)
+            current_etag = self._etag_for(current)
+            if if_match is not None and if_match != current_etag:
+                raise ValueError("ETag mismatch")
+        # Never persist the 'id' field in the JSON content
+        to_write = {k: v for k, v in data.items() if k != "id"}
+        tmp_path = file_path.with_suffix(".json.tmp")
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(to_write, f, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+        os.replace(tmp_path, file_path)
 
     def delete(self, object_id: str, *path_parts: str) -> bool:
         """
@@ -77,21 +88,5 @@ class JSONFileStore:
         file_path = self._get_path(*path_parts, f"{object_id}.json")
         if not file_path.exists():
             return False
-        os.remove(file_path)
+        file_path.unlink()
         return True
-
-    def patch(self, object_id: str, patch_data: dict[str, Any], *path_parts: str) -> None:
-        """
-        Applies a partial update to a JSON object.
-        """
-        file_path = self._get_path(*path_parts, f"{object_id}.json")
-        if file_path.exists():
-            with open(file_path, "r+") as f:
-                data = cast(dict[str, Any], json.load(f))
-                data.update({k: v for k, v in patch_data.items() if k != "id"})
-                f.seek(0)
-                json.dump(data, f, indent=2)
-                f.truncate()
-        else:
-            # If the object doesn't exist, create it with the patch data.
-            self.save(object_id, patch_data, *path_parts)

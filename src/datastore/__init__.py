@@ -1,13 +1,12 @@
 from pathlib import Path
 
-from lib.constants import BASE_DIR
-from lib.logging import logger
+from lib import BASE_DIR, logger
 
-from .accounts import Accounts
-from .backends.json_file_store import JSONFileStore
-from .model_store import ModelStore
-from .players import Players
-from .presets import AccountPresets, GlobalPresets
+from .backends import JSONFileStore
+from .core import ModelStore
+from .stores.accounts import Accounts
+from .stores.players import Players
+from .stores.presets import AccountPresets, GlobalPresets
 
 
 class DataStore:
@@ -17,11 +16,11 @@ class DataStore:
         # Provide sensible defaults so tests can construct without args
         self.data_path = Path(data_path) if data_path else BASE_DIR / "tmp" / "data"
         self.seed_path = Path(seed_path) if seed_path else BASE_DIR / "data"
-        self.file_store = JSONFileStore(str(self.data_path))
-        self.accounts = Accounts(self.file_store)
-        self.players = Players(self.file_store)
-        self.global_presets = GlobalPresets(self.file_store)
-        self.account_presets = AccountPresets(self.file_store)
+        self.backend = JSONFileStore(str(self.data_path))
+        self.accounts = Accounts(self.backend)
+        self.players = Players(self.backend)
+        self.global_presets = GlobalPresets(self.backend)
+        self.account_presets = AccountPresets(self.backend)
 
     def seed(self) -> None:
         """
@@ -48,11 +47,14 @@ class DataStore:
 
 
 __all__ = [
-    "AccountPresets",
-    "Accounts",
     "DataStore",
-    "GlobalPresets",
-    "JSONFileStore",
+    # Core abstractions
     "ModelStore",
+    # Backends
+    "JSONFileStore",
+    # Domain stores
+    "Accounts",
     "Players",
+    "GlobalPresets",
+    "AccountPresets",
 ]
