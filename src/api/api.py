@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from datastore import DataStore
@@ -63,3 +64,15 @@ class RegistryAPI(FastAPI):
             return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
         silence_access_logs("/healthz")
+
+        self.add_middleware(
+            CORSMiddleware,
+            allow_origins=[
+                "http://localhost:5173",
+                "http://localhost",
+                "https://localhost"
+            ],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
